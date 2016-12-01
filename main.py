@@ -7,13 +7,13 @@ import os, glob
 
 # Import everything needed to edit/save/watch video clips
 from moviepy.editor import VideoFileClip
-from IPython.display import HTML
 
 ############################
 ## Common Functions ########
 ############################
 
 """
+Class to detect lane boundaries in color images
 """
 class LaneDetection:
     def __init__(self):
@@ -56,6 +56,7 @@ class LaneDetection:
         """
         Run image processing pipeline to identify lane lines.
         This method will return a annotated version of the input img.
+        Input has be a color image.
         """
 
         # Update internal storage
@@ -140,17 +141,17 @@ class LaneDetection:
 
     def maskImage(self, img):
         """
-        Mask the input image
+        Mask the input image with fixed mask.
         """
 
-        imshape = img.shape
-        leftBoundary = 115
-        top1 = 320
-        top2 = 300
-        leftTop = 440
-        rightTop = 530
+        # Used fixed mask for all images.
+        # Adapting this detected lanes direction could improve the performance.
+        bottomLeft = (115, self._imageShape[0])
+        topLeft = (440, 320)
+        topRight = (530, 300)
+        bottomRight = (self._imageShape[1], self._imageShape[0])
 
-        vertices = np.array([[(leftBoundary, imshape[0]), (leftTop, top1), (rightTop, top2), (imshape[1], imshape[0])]],
+        vertices = np.array([[bottomLeft, topLeft, topRight, bottomRight]],
                             dtype=np.int32)
 
         return self.region_of_interest(img, vertices)
@@ -173,7 +174,7 @@ class LaneDetection:
         this function with the weighted_img() function below
         """
 
-        # Split lines in three categories (left, right, unused)
+        # Split lines in two categories (left, right)
         leftLane = []
         rightLane = []
 
@@ -183,23 +184,24 @@ class LaneDetection:
 
                 # Do not use almost horizontal lines
                 if abs(slope) > 0.3:
+                    # Set color for right lanes
                     colorRaw = [0, 255, 0]
                     if slope < 0:
                         leftLane.append([x1, y1])
                         leftLane.append([x2, y2])
+                        # Alter color for left lanes
                         colorRaw = [0, 0, 255]
                     else:
                         rightLane.append([x1, y1])
                         rightLane.append([x2, y2])
 
+                    # Show unprocessed lines in image
                     if self.showRawResults:
                         cv2.line(img, (x1, y1), (x2, y2), colorRaw, thickness)
 
-        shape = img.shape
-
+        # Use polynomial of first order to fit line (This is only appropriate when driving straight)
         leftLane = np.array(leftLane)
         fitLeft = np.polyfit(leftLane[:, 0], leftLane[:, 1], 1)
-
         rightLane = np.array(rightLane)
         fitRight = np.polyfit(rightLane[:, 0], rightLane[:, 1], 1)
 
@@ -213,17 +215,9 @@ class LaneDetection:
             self._fitLeft = fitLeft
             self._fitRight = fitRight
 
-        # Use a more appropriate model for the lanes than a simple line
-
-        # Sort points in leftLane and rightLane by y-axis
-        #leftLane = leftLane[np.argsort(leftLane[:, 1])]
-        #rightLane = rightLane[np.argsort(rightLane[:, 1])]
-        #splineLeft = interpolate.splrep(leftLane[:, 1], leftLane[:, 0], s=0)
-        #splineRight = interpolate.splrep(rightLane[:, 1], rightLane[:, 0], s=0)
-
         # These parameters give the top and bottom position of the extrapolation (Could be made adaptive)
         drawingRangeTop = 320
-        drawingRangeBottom = shape[0]
+        drawingRangeBottom = self._imageShape[0]
 
         # Find top and bottom points to draw lines inbetween
         lineLeftTop = (int((drawingRangeTop - self._fitLeft[1]) / self._fitLeft[0]), drawingRangeTop)
@@ -288,7 +282,7 @@ def main():
         laneDetection = LaneDetection()
         results = laneDetection.run(img)
         mpimg.imsave(filenameResults, results)
-
+        return 0
 
     white_output = 'white.mp4'
     clip1 = VideoFileClip("solidWhiteRight.mp4")
