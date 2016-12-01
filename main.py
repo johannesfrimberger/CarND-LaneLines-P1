@@ -4,7 +4,6 @@ import matplotlib.image as mpimg
 import numpy as np
 import cv2
 import os, glob
-from scipy import interpolate
 
 # Import everything needed to edit/save/watch video clips
 from moviepy.editor import VideoFileClip
@@ -14,6 +13,8 @@ from IPython.display import HTML
 ## Common Functions ########
 ############################
 
+"""
+"""
 class LaneDetection:
     def __init__(self):
         """
@@ -32,18 +33,29 @@ class LaneDetection:
         self.high_threshold = 180
 
         # Parameters used in hough transformation
-        self.rho = 1  # distance resolution in pixels of the Hough grid
+        self.rho = 2  # distance resolution in pixels of the Hough grid
         self.theta = np.pi / 180  # angular resolution in radians of the Hough grid
         self.hough_threshold = 5  # minimum number of votes (intersections in Hough grid cell)
         self.min_line_length = 10  # minimum number of pixels making up a line
         self.max_line_gap = 2  # maximum gap in pixels between connectable line segments
 
-        # Internal storage
-        self._imageShape = (0,0)
+        # Parameters for
+        self.update_rate = 0.05
+
+        # Reset internal storage
+        self.reset()
+
+    def reset(self):
+        """
+        Reset all internal storage to default values
+        """
+        self._imageShape = (0, 0)
+        self._init = False
 
     def run(self, img):
         """
-
+        Run image processing pipeline to identify lane lines.
+        This method will return a annotated version of the input img.
         """
 
         # Update internal storage
@@ -57,7 +69,11 @@ class LaneDetection:
         imgHoughLines = self.runHoughLines(imgMasked)
         imgWithLanes = self.weighted_img(imgHoughLines, img)
 
+        # Set class to initialized
+        self._init = True
+
         return imgWithLanes
+        #return cv2.cvtColor(imgMasked, cv2.COLOR_GRAY2RGB)
 
     def convertToGrayscale(self, img):
         """Applies the Grayscale transform
@@ -124,16 +140,17 @@ class LaneDetection:
 
     def maskImage(self, img):
         """
-
+        Mask the input image
         """
 
         imshape = img.shape
         leftBoundary = 115
-        top = 320
+        top1 = 320
+        top2 = 300
         leftTop = 440
         rightTop = 530
 
-        vertices = np.array([[(leftBoundary, imshape[0]), (leftTop, top), (rightTop, top), (imshape[1], imshape[0])]],
+        vertices = np.array([[(leftBoundary, imshape[0]), (leftTop, top1), (rightTop, top2), (imshape[1], imshape[0])]],
                             dtype=np.int32)
 
         return self.region_of_interest(img, vertices)
@@ -186,27 +203,37 @@ class LaneDetection:
         rightLane = np.array(rightLane)
         fitRight = np.polyfit(rightLane[:, 0], rightLane[:, 1], 1)
 
-        leftLane = leftLane[np.argsort(leftLane[:, 1])]
-        rightLane = rightLane[np.argsort(rightLane[:, 1])]
+        # Check if LaneDetection algorithm has been initialized and update line parameters
+        if self._init:
+            self._fitLeft[0] = ((1.0 - self.update_rate) * self._fitLeft[0]) + (self.update_rate * fitLeft[0])
+            self._fitLeft[1] = ((1.0 - self.update_rate) * self._fitLeft[1]) + (self.update_rate * fitLeft[1])
+            self._fitRight[0] = ((1.0 - self.update_rate) * self._fitRight[0]) + (self.update_rate * fitRight[0])
+            self._fitRight[1] = ((1.0 - self.update_rate) * self._fitRight[1]) + (self.update_rate * fitRight[1])
+        else:
+            self._fitLeft = fitLeft
+            self._fitRight = fitRight
 
+        # Use a more appropriate model for the lanes than a simple line
+
+        # Sort points in leftLane and rightLane by y-axis
+        #leftLane = leftLane[np.argsort(leftLane[:, 1])]
+        #rightLane = rightLane[np.argsort(rightLane[:, 1])]
         #splineLeft = interpolate.splrep(leftLane[:, 1], leftLane[:, 0], s=0)
         #splineRight = interpolate.splrep(rightLane[:, 1], rightLane[:, 0], s=0)
 
-        drawingRange = 320
-        point1 = (int((drawingRange - fitLeft[1]) / fitLeft[0]), drawingRange)
-        point2 = (int((shape[0] - fitLeft[1]) / fitLeft[0]), shape[0])
-        point3 = (int((drawingRange - fitRight[1]) / fitRight[0]), drawingRange)
-        point4 = (int((shape[0] - fitRight[1]) / fitRight[0]), shape[0])
+        # These parameters give the top and bottom position of the extrapolation (Could be made adaptive)
+        drawingRangeTop = 320
+        drawingRangeBottom = shape[0]
 
-        #xnew = np.arange(drawingRange, shape[0], 1)
-        #pointsLeft = interpolate.splev(xnew, splineLeft, der=0).astype(int)
-
-        #for i in range(len(xnew)-1):
-            #cv2.line(img, (xnew[i], pointsLeft[i]), (xnew[i+1], pointsLeft[i+1]), color, thickness)
+        # Find top and bottom points to draw lines inbetween
+        lineLeftTop = (int((drawingRangeTop - self._fitLeft[1]) / self._fitLeft[0]), drawingRangeTop)
+        lineLeftBottom = (int((drawingRangeBottom - self._fitLeft[1]) / self._fitLeft[0]), drawingRangeBottom)
+        lineRightTop = (int((drawingRangeTop - self._fitRight[1]) / self._fitRight[0]), drawingRangeTop)
+        lineRightBottom = (int((drawingRangeBottom - self._fitRight[1]) / self._fitRight[0]), drawingRangeBottom)
 
         if not(self.showRawResults):
-            cv2.line(img, point1, point2, color, thickness)
-            cv2.line(img, point3, point4, color, thickness)
+            cv2.line(img, lineLeftTop, lineLeftBottom, color, thickness)
+            cv2.line(img, lineRightTop, lineRightBottom, color, thickness)
 
     def runHoughLines(self, img):
         """
@@ -236,11 +263,13 @@ class LaneDetection:
         """
         return cv2.addWeighted(initial_img, α, img, β, λ)
 
+# Not best practice but use a global variable to keep information from previous frame
+# with fl_image function not taking multiple parameters
+laneDetection = LaneDetection()
+
 def process_image(image):
     # NOTE: The output you return should be a color image (3 channel) for processing video below
-    # TODO: put your pipeline here,
     # you should return the final output (image with lines are drawn on lanes)
-    laneDetection = LaneDetection()
     return laneDetection.run(image)
 
 def main():
@@ -259,18 +288,20 @@ def main():
         laneDetection = LaneDetection()
         results = laneDetection.run(img)
         mpimg.imsave(filenameResults, results)
-        #return 0
+
 
     white_output = 'white.mp4'
     clip1 = VideoFileClip("solidWhiteRight.mp4")
     white_clip = clip1.fl_image(process_image)  # NOTE: this function expects color images!!
     white_clip.write_videofile(white_output, audio=False)
 
+    laneDetection.reset()
     yellow_output = 'yellow.mp4'
     clip2 = VideoFileClip('solidYellowLeft.mp4')
     yellow_clip = clip2.fl_image(process_image)
     yellow_clip.write_videofile(yellow_output, audio=False)
 
+    laneDetection.reset()
     challenge_output = 'extra.mp4'
     clip2 = VideoFileClip('challenge.mp4')
     challenge_clip = clip2.fl_image(process_image)
