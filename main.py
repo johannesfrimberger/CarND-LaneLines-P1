@@ -39,8 +39,8 @@ class LaneDetection:
         self.min_line_length = 10  # minimum number of pixels making up a line
         self.max_line_gap = 2  # maximum gap in pixels between connectable line segments
 
-        # Parameters for
-        self.update_rate = 0.05
+        # Parameters for lane tracking (set it to 1 to deactivate low passing)
+        self.low_pass_update_rate = 0.05
 
         # Reset internal storage
         self.reset()
@@ -207,10 +207,10 @@ class LaneDetection:
 
         # Check if LaneDetection algorithm has been initialized and update line parameters
         if self._init:
-            self._fitLeft[0] = ((1.0 - self.update_rate) * self._fitLeft[0]) + (self.update_rate * fitLeft[0])
-            self._fitLeft[1] = ((1.0 - self.update_rate) * self._fitLeft[1]) + (self.update_rate * fitLeft[1])
-            self._fitRight[0] = ((1.0 - self.update_rate) * self._fitRight[0]) + (self.update_rate * fitRight[0])
-            self._fitRight[1] = ((1.0 - self.update_rate) * self._fitRight[1]) + (self.update_rate * fitRight[1])
+            self._fitLeft[0] = ((1.0 - self.low_pass_update_rate) * self._fitLeft[0]) + (self.low_pass_update_rate * fitLeft[0])
+            self._fitLeft[1] = ((1.0 - self.low_pass_update_rate) * self._fitLeft[1]) + (self.low_pass_update_rate * fitLeft[1])
+            self._fitRight[0] = ((1.0 - self.low_pass_update_rate) * self._fitRight[0]) + (self.low_pass_update_rate * fitRight[0])
+            self._fitRight[1] = ((1.0 - self.low_pass_update_rate) * self._fitRight[1]) + (self.low_pass_update_rate * fitRight[1])
         else:
             self._fitLeft = fitLeft
             self._fitRight = fitRight
@@ -282,7 +282,6 @@ def main():
         laneDetection = LaneDetection()
         results = laneDetection.run(img)
         mpimg.imsave(filenameResults, results)
-        return 0
 
     white_output = 'white.mp4'
     clip1 = VideoFileClip("solidWhiteRight.mp4")
